@@ -1,0 +1,61 @@
+module apb_tb;
+  logic pclk = 0;
+  logic presetn, psel, penable, pwrite;
+  logic [31:0] paddr, pwdata, prdata;
+  logic [3:0] pstrb;
+  logic [2:0] pprot;
+  logic pready, pslverr;
+  @DECLARATIONS@
+
+  test_block_csr_reg dut (
+    .pclk, .presetn, .psel, .penable, .pwrite, .paddr, .pwdata, .prdata,
+    .pstrb, .pprot, .pready, .pslverr,
+    @PORTS@
+  );
+
+  always #5 pclk = ~pclk;
+
+  task automatic reset_dut;
+    @(negedge pclk);
+    presetn = 0;
+    psel = 0;
+    penable = 0;
+    @(negedge pclk);
+    presetn = 1;
+  endtask
+
+  task automatic xfer(
+    input logic [31:0] addr,
+    input logic write,
+    input logic [31:0] data,
+    input logic [3:0] strobe,
+    input logic nonsecure,
+    input logic error,
+    input logic [31:0] expected
+  );
+    @(negedge pclk);
+    psel = 1;
+    penable = 0;
+    paddr = addr;
+    pwrite = write;
+    pwdata = data;
+    pstrb = strobe;
+    pprot = {1'b0, nonsecure, 1'b0};
+    #1;
+    if (pslverr !== 1'b0) $fatal(1, "APB error asserted during setup");
+    @(negedge pclk);
+    penable = 1;
+    #1;
+    if (pready !== 1'b1 || pslverr !== error || (!write && prdata !== expected))
+      $fatal(1, "APB addr=%h write=%b error=%b expected=%b data=%h expected=%h",
+             addr, write, pslverr, error, prdata, expected);
+    @(posedge pclk);
+    #1;
+  endtask
+
+  initial begin
+    reset_dut();
+    @CHECKS@
+    $finish;
+  end
+endmodule
